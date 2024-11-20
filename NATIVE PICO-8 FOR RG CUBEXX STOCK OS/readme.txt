@@ -1,4 +1,7 @@
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 NATIVE PICO-8 FOR ANBERNIC H700 STOCK OS
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                ~by Ry~                 
 
 Instructions:
 
@@ -10,7 +13,4 @@ Instructions:
 
 4) Splore and play!
 
-5) To exit Pico-8, select Options from a game's menu (accessed with the START button) and select "Shutdown Pico-8".
-
-
-Note: Make sure you are either connected to Wi-Fi or have at least one game in your Roms/PICO folder - otherwise you can get stuck inside Pico-8 and require a hard reset!
+5) To exit Pico-8, simply tap the power button at any time.
