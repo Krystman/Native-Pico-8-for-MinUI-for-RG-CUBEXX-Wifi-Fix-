@@ -16,7 +16,7 @@ NATIVE PICO-8 FOR MINUI ON ANBERNIC H700 DEVICES (AND PK RGB30)
 
 4) In the Tools/rg40xxcube/Wi-Fi.pak/, and Tools/rgb30/Wi-Fi.pak/ folders, there is a wifi.txt. On the first line, add the SSID (name of your wifi network). On the second line, add the PSK (password of that network). Do this for each of the devices you wish to connect to your network - unlike the Splore paks, these are platform specific, so you must make sure to add your network in this way to each of the three platforms you wish to connect to the internet.
 
-ATTENTION: for RG 35XX Plus devices (including the RG CUBEXX) the configuration file is Tools/rg40xxcube/Wi-Fi.pak/wifi.conf and is structured differently. Just open it in a text editor and overwrite the entries for "Your Wi-fi" and "Your password". Make sure to preserve the quotation marks.
+ATTENTION: for RG 35XX Plus devices (including the RG CUBEXX) the configuration file is Tools/rg35xxplus/Wi-Fi.pak/wifi.conf and is structured differently. Just open it in a text editor and overwrite the entries for "Your Wi-fi" and "Your password". Make sure to preserve the quotation marks.
 
 5) Add any Pico-8 carts you wish to play offline to the Roms/Pico-8 (P8-NATIVE) folder.
 
