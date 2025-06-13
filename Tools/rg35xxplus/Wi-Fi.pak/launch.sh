@@ -1,56 +1,113 @@
 #!/bin/bash
 
 cd "$(dirname "$0")"
-
-OLDIFS=$IFS
-IFS=$'\n' read -a WIFI -d '' < ./wifi.txt
-IFS=$OLDIFS
-
-WIFI_NAME=${WIFI[0]}
-WIFI_PASS=${WIFI[1]}
-
-##############
-
+SCRIPT_DIR="$(pwd)"
+LOG="$SCRIPT_DIR/log.txt"
+CONF_NAME="wifi.conf"
+WPA_CONF="$SCRIPT_DIR/$CONF_NAME"
+WIFI_IFACE="wlan0"
 RES_PATH="$(dirname "$0")/res"
 
-toggle_wifi() {
-    wifi_status=$(nmcli radio wifi)
-		
-    if [ "$wifi_status" = "disabled" ]; then
-	    echo "Wi-Fi is currently OFF. Turning it ON and connecting to $WIFI_NAME..."
+echo "[INFO] Running Wi-Fi toggle script..." | tee "$LOG"
 
-        nmcli radio wifi on
-        nmcli device wifi connect "$WIFI_NAME" password "$WIFI_PASS" &
+# Check config file
+if [ ! -f "$WPA_CONF" ]; then
+    echo "[ERROR] Missing config: $WPA_CONF" | tee -a "$LOG"
+	show.elf "$RES_PATH/config_error.png" 2
+    exit 0
+fi
 
-		DELAY=30
-		show.elf "$RES_PATH/enable.png" $DELAY &
-		for i in `seq 1 $DELAY`; do
-			STATUS=$(cat "/sys/class/net/wlan0/operstate")
-			if [ "$STATUS" = "up" ]; then
-				break
-			fi
-			sleep 1
-		done
+# Extract SSID and password from config
+SSID=$(grep '^ *ssid=' "$WPA_CONF" | head -n1 | cut -d'"' -f2)
+PASSWORD=$(grep psk "$WPA_CONF" | head -n1 | sed 's/psk=//; s/"//g')
 
-    else ### if [ "$wifi_status" != "disabled" ]; then
+if [ -z "$SSID" ]; then
+    echo "[ERROR] Could not parse SSID from config." | tee -a "$LOG"
+    show.elf "$RES_PATH/config_error.png" 2
+    exit 0
+fi
+if [ "$SSID" = "Your Wi-fi" ] || [ "$PASSWORD" = "Your password" ]; then
+    echo "[ERROR] Please edit the wifi.conf file and provide a valid SSID and password." | tee -a "$LOG"
+    show.elf "$RES_PATH/config_error.png" 2
+    exit 0
+fi
 
-        current_ssid=$(nmcli -t -f ACTIVE,SSID device wifi | grep "yes:" | cut -d: -f2)
+# Determine current SSID
+echo "[INFO] Checking current Wi-Fi connection on $WIFI_IFACE..." | tee -a "$LOG"
+CURRENT_SSID=$(iw "$WIFI_IFACE" link | grep 'SSID:' | awk -F'SSID: ' '{print $2}')
+echo "[DEBUG] Current SSID: $CURRENT_SSID" | tee -a "$LOG"
 
-        if [ "$current_ssid" = "$WIFI_NAME" ]; then
-            echo "Already connected to $WIFI_NAME. Disconnecting and turning off Wi-Fi..."
+if [ "$CURRENT_SSID" = "$SSID" ]; then
+    echo "[INFO] Already connected to $SSID. Toggling OFF..." | tee -a "$LOG"
+	show.elf "$RES_PATH/disable.png" 1
 
-			show.elf "$RES_PATH/disable.png" 2
-			
-            nmcli device disconnect wlan0
-            nmcli radio wifi off
-        else ### [ "$current_ssid" != "$WIFI_NAME" ]; then
-            echo "Wi-Fi is ON but not connected to $WIFI_NAME. Connecting now..."
+    echo "[INFO] Killing wpa_supplicant..." | tee -a "$LOG"
+    pkill -f wpa_supplicant
 
-			show.elf "$RES_PATH/update.png" 2
+    echo "[INFO] Releasing IP address..." | tee -a "$LOG"
+    dhclient -r "$WIFI_IFACE" 2>>"$LOG"
 
-            nmcli device wifi connect "$WIFI_NAME" password "$WIFI_PASS"
-        fi
+    echo "[INFO] Bringing interface down..." | tee -a "$LOG"
+    ip link set "$WIFI_IFACE" down
+
+    echo "[SUCCESS] Wi-Fi disabled." | tee -a "$LOG"
+	show.elf "$RES_PATH/disconnected.png" 1
+    exit 0
+fi
+
+# Not connected — try to connect
+echo "[INFO] Not connected to $SSID. Toggling ON and connecting..." | tee -a "$LOG"
+show.elf "$RES_PATH/enable.png" 0
+
+echo "[INFO] Bringing interface up..." | tee -a "$LOG"
+ip link set "$WIFI_IFACE" up 2>>"$LOG"
+
+echo "[INFO] Killing existing wpa_supplicant..." | tee -a "$LOG"
+pkill -f wpa_supplicant
+sleep 1
+
+echo "[INFO] Creating control interface directory..." | tee -a "$LOG"
+mkdir -p /tmp/wpa_supplicant
+
+echo "[INFO] Starting wpa_supplicant..." | tee -a "$LOG"
+wpa_supplicant -B -i "$WIFI_IFACE" -c "$WPA_CONF" -C /tmp/wpa_supplicant 2>>"$LOG"
+
+echo "[INFO] Waiting for association..." | tee -a "$LOG"
+
+DELAY=15
+associated=0
+frame=1
+
+for i in `seq 1 $DELAY`; do
+    STATUS=$(iw "$WIFI_IFACE" link)
+    echo "[DEBUG] iw status: $STATUS" | tee -a "$LOG"
+    if echo "$STATUS" | grep -q "SSID: $SSID"; then
+		associated=1
+        echo "[INFO] Successfully associated with $SSID." | tee -a "$LOG"
+        break
     fi
-}
+    show.elf "$RES_PATH/connecting_${frame}.png" 1
+    frame=$((frame + 1))
+    if [ $frame -gt 3 ]; then
+        frame=1
+    fi
+done
+killall -s KILL show.elf
 
-toggle_wifi > ./log.txt 2>&1
+if [ $associated -eq 0 ]; then
+	echo "[FAILURE] Failed to associate with Wi-Fi." | tee -a "$LOG"
+	show.elf "$RES_PATH/connect_fail.png" 1
+	exit 0
+fi
+	
+echo "[INFO] Requesting IP via DHCP..." | tee -a "$LOG"
+dhclient "$WIFI_IFACE" 2>>"$LOG"
+
+IP=$(ip addr show "$WIFI_IFACE" | grep 'inet ' | awk '{print $2}')
+if [ -n "$IP" ]; then
+    echo "[SUCCESS] Connected to $SSID with IP: $IP" | tee -a "$LOG"
+	show.elf "$RES_PATH/connected.png" 1
+else
+    echo "[FAILURE] Failed to connect to $SSID." | tee -a "$LOG"
+	show.elf "$RES_PATH/connect_fail.png" 1
+fi
